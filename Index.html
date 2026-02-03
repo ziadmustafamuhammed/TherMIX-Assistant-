@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TherMix </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #F9FAFB; }
+        .bg-navy { background-color: #30486D; }
+        .text-navy { color: #30486D; }
+        .bg-scientific { background-color: #4C74A9; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(229, 231, 235, 1); }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        @media print { .no-print { display: none !important; } body { background: white; } }
+    </style>
+</head>
+<body class="text-gray-900 antialiased">
+
+    <nav class="bg-navy text-white px-6 py-4 flex justify-between items-center shadow-xl sticky top-0 z-50 no-print">
+        <div class="flex items-center gap-3">
+            <svg class="w-8 h-8 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+            </svg>
+            <span class="text-xl font-extrabold tracking-tight" onclick="showPage('dashboard')" style="cursor:pointer">TherMix </span>
+        </div>
+        <div class="flex items-center gap-6">
+            <button onclick="showPage('dashboard')" class="hover:text-blue-200 font-medium">Protocols</button>
+            <button onclick="showPage('import')" class="bg-scientific px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-opacity-90 transition">Smart Import</button>
+        </div>
+    </nav>
+
+    <div id="main-content" class="container mx-auto p-6 max-w-7xl"></div>
+
+    <script>
+        // --- Persistence Logic ---
+        function saveToLocal() {
+            localStorage.setItem('molecular_protocols_v2', JSON.stringify(state.protocols));
+        }
+
+        function loadFromLocal() {
+            const saved = localStorage.getItem('molecular_protocols_v2');
+            if (saved) {
+                state.protocols = JSON.parse(saved);
+            }
+        }
+   
+const apiKey = window.process?.env?.GEMINI_API_KEY || "";
+         let state = {
+
+            currentPage: 'dashboard',
+
+            isAILoading: false,
+
+            protocols: [
+
+                {
+                    id: 'p1',
+                    title: 'SARS-CoV-2 Detection (N1)',
+                    description: 'Standard CDC-approved diagnostic protocol.',
+                    updated: '2023-10-24',
+                    numSamples: 10,
+                    sampleVolume: 5.0,
+                    reagents: [
+                        { name: 'Nuclease-free Water', perSample: 5.5, unit: 'µL' },
+                        { name: 'TaqPath Master Mix', perSample: 12.5, unit: 'µL' },
+                        { name: 'N1 Primers/Probes', perSample: 1.5, unit: 'µL' }
+                    ],
+                    thermalSteps: [
+                        { name: 'Reverse Transcription', temp: 50, duration: '15m', cycles: 1 },
+                        { name: 'Initial Denaturation', temp: 95, duration: '2m', cycles: 1 },
+                        { name: 'Denaturation', temp: 95, duration: '3s', cycles: 45 },
+                        { name: 'Anneal & Extend', temp: 55, duration: '30s', cycles: 45 }
+                    ]
+                }
+            ],
+            editingProtocol: null
+        };
+
+        async function callGemini(prompt, isJson = false) {
+    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+    if (isJson) payload.generationConfig = { responseMimeType: "application/json" };
+    
+    try {
+        // بدلاً من مناداة جوجل مباشرة، ننادي الـ API الخاص بنا في Vercel
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Server Error");
+        }
+
+        const result = await response.json();
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        return isJson ? JSON.parse(text) : text;
+    } catch (error) {
+        console.error("AI Error:", error);
+        alert("⚠️ AI Notification: " + error.message);
+        return null;
+    }
+}
+
+        function showPage(page) {
+            state.currentPage = page;
+            render();
+        }
+
+        function createNewProtocol() {
+            const newId = 'p' + Date.now();
+            const newP = {
+                id: newId, title: 'New Protocol', description: 'Brief description of the experiment...',
+                updated: new Date().toISOString().split('T')[0], numSamples: 1, sampleVolume: 2.0,
+                reagents: [{ name: 'Nuclease-free Water', perSample: 10, unit: 'µL' }],
+                thermalSteps: [{ name: 'Initial Denaturation', temp: 95, duration: '2m', cycles: 1 }]
+            };
+            state.protocols.push(newP);
+            saveToLocal();
+            editProtocol(newId);
+        }
+
+        function deleteProtocol(id) {
+            if (confirm("Are you sure you want to delete this protocol?")) {
+                state.protocols = state.protocols.filter(p => p.id !== id);
+                saveToLocal();
+                showPage('dashboard');
+            }
+        }
+
+        function editProtocol(id) {
+            const found = state.protocols.find(p => p.id === id);
+            if (!found) return;
+            state.editingProtocol = JSON.parse(JSON.stringify(found));
+            state.currentPage = 'editor';
+            render();
+        }
+
+        function saveChanges() {
+            const idx = state.protocols.findIndex(p => p.id === state.editingProtocol.id);
+            if (idx === -1) return;
+            state.editingProtocol.updated = new Date().toISOString().split('T')[0];
+            state.protocols[idx] = JSON.parse(JSON.stringify(state.editingProtocol));
+            saveToLocal();
+            showPage('dashboard');
+        }
+
+        function renderDashboard() {
+            document.getElementById('main-content').innerHTML = `
+                <div class="mb-10 flex justify-between items-center">
+                    <h1 class="text-4xl font-extrabold text-navy">Laboratory Protocols</h1>
+                    <button onclick="createNewProtocol()" class="bg-navy text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:brightness-110 transition">+ New Protocol</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    ${state.protocols.map(p => `
+                        <div class="glass-card rounded-2xl p-6 hover:shadow-xl transition-all border-l-4 border-transparent hover:border-navy flex flex-col justify-between">
+                            <div>
+                                <h3 class="text-xl font-bold text-navy mb-2">${p.title}</h3>
+                                <p class="text-sm text-gray-500 line-clamp-2 mb-6">${p.description}</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="editProtocol('${p.id}')" class="flex-grow bg-gray-100 text-navy py-2 rounded-lg font-bold text-sm hover:bg-gray-200">View / Edit</button>
+                                <button onclick="deleteProtocol('${p.id}')" class="px-3 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition">✕</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+ function renderEditor() {
+    const p = state.editingProtocol;
+    const mMixTotal = p.reagents.reduce((s, r) => s + (parseFloat(r.perSample) || 0), 0);
+
+    document.getElementById('main-content').innerHTML = `
+        <div class="max-w-4xl mx-auto space-y-6 pb-20 px-2">
+            
+            <div class="glass-card rounded-xl p-4 border-none shadow-sm bg-white">
+                <input type="text" value="${p.title}" class="text-xl font-black text-navy w-full border-none focus:ring-0 mb-1 p-0 bg-transparent" onchange="state.editingProtocol.title = this.value">
+                <textarea class="text-gray-500 w-full border-none focus:ring-0 p-0 text-xs italic bg-transparent resize-none h-10" onchange="state.editingProtocol.description = this.value">${p.description}</textarea>
+            </div>
+
+            <div class="flex items-center justify-between bg-[#E9EEF5] p-3 rounded-xl border border-blue-100 shadow-sm">
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold text-navy uppercase tracking-widest">Number of Samples</span>
+                </div>
+                <div class="flex items-center gap-2 bg-white rounded-lg px-3 py-1 border border-blue-200">
+                    <span class="text-navy font-bold text-sm">N =</span>
+                    <input type="number" value="${p.numSamples}" 
+                    onchange="state.editingProtocol.numSamples = parseInt(this.value) || 1; render();" 
+                    class="w-12 bg-transparent border-none text-center font-black text-navy p-0 text-lg focus:ring-0">
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-[#F8FAFC] text-navy border-b border-gray-200">
+                            <th class="py-3 px-3 font-bold text-[10px] uppercase">Reagent</th>
+                            <th class="py-3 px-1 text-center font-bold text-[10px] uppercase border-l border-gray-100">1x (µL)</th>
+                            <th class="py-3 px-1 text-center font-bold text-[10px] uppercase bg-[#D1DCEB] border-l border-gray-100">${p.numSamples}x (µL)</th>
+                            <th class="py-3 px-1"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 text-sm font-medium">
+                        <tr class="bg-[#FFFEE5]">
+                            <td class="py-3 px-3 text-navy font-bold">DNA Sample</td>
+                            <td class="py-3 px-1 text-center border-l border-gray-50">
+                                <input type="number" step="0.1" value="${p.sampleVolume}" onchange="state.editingProtocol.sampleVolume = parseFloat(this.value) || 0; render();" class="w-14 bg-transparent border-none text-center font-bold text-sm focus:ring-0 p-0">
+                            </td>
+                            <td class="py-3 px-1 text-center font-bold text-gray-500 bg-[#FFFEE5] border-l border-gray-50">${(p.sampleVolume * p.numSamples).toFixed(2)}</td>
+                            <td class="py-3 px-1"></td>
+                        </tr>
+                        ${p.reagents.map((r, i) => `
+                            <tr>
+                                <td class="py-3 px-3"><input type="text" value="${r.name}" class="w-full bg-transparent border-none p-0 focus:ring-0 text-sm font-medium text-gray-700" onchange="state.editingProtocol.reagents[${i}].name = this.value"></td>
+                                <td class="py-3 px-1 text-center border-l border-gray-50"><input type="number" step="0.1" value="${r.perSample}" class="w-14 bg-transparent border-none text-center font-bold text-sm focus:ring-0 p-0" onchange="state.editingProtocol.reagents[${i}].perSample = parseFloat(this.value) || 0; render();"></td>
+                                <td class="py-3 px-1 text-center font-black text-navy bg-[#F8FAFC] border-l border-gray-50">${(r.perSample * p.numSamples).toFixed(2)}</td>
+                                <td class="py-3 px-1 text-center"><button onclick="state.editingProtocol.reagents.splice(${i},1); render();" class="text-red-300">✕</button></td>
+                            </tr>
+                        `).join('')}
+                        <tr class="bg-[#30486D] text-white">
+                            <td class="py-3 px-3 font-bold text-[10px] uppercase">Master Mix Total</td>
+                            <td class="py-3 px-1 text-center font-black text-sm">${mMixTotal.toFixed(2)}</td>
+                            <td class="py-3 px-1 text-center font-black text-sm bg-[#4C74A9]">${(mMixTotal * p.numSamples).toFixed(2)}</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <button onclick="state.editingProtocol.reagents.push({name: 'New Reagent', perSample: 0}); render();" class="w-full py-3 text-xs font-bold text-gray-400 border-t border-dashed border-gray-200 hover:bg-gray-50">+ Add Reagent</button>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-md border border-gray-100 p-4">
+                <h3 class="text-sm font-black text-navy uppercase tracking-widest mb-4">Thermal Profile</h3>
+                
+                <div class="flex px-2 mb-2 text-[9px] font-bold text-gray-400 uppercase tracking-tighter">
+                    <div class="flex-grow">Step</div>
+                    <div class="w-14 text-center">Temp</div>
+                    <div class="w-14 text-center">Time</div>
+                    <div class="w-12 text-center">Cycles</div>
+                    <div class="w-6"></div>
+                </div>
+
+                <div class="space-y-2">
+                    ${p.thermalSteps.map((s, i) => `
+                        <div class="flex items-center gap-2 bg-[#F8FAFC] p-3 rounded-xl border border-gray-100">
+                            <div class="flex-grow">
+                                <input type="text" value="${s.name}" class="w-full bg-transparent border-none p-0 font-bold text-navy text-xs focus:ring-0" onchange="state.editingProtocol.thermalSteps[${i}].name = this.value">
+                            </div>
+                            <input type="number" value="${s.temp}" class="w-12 bg-white border border-gray-200 rounded py-1 text-center font-bold text-xs" onchange="state.editingProtocol.thermalSteps[${i}].temp = parseInt(this.value); render();">
+                            <input type="text" value="${s.duration}" class="w-12 bg-white border border-gray-200 rounded py-1 text-center font-bold text-xs italic" onchange="state.editingProtocol.thermalSteps[${i}].duration = this.value; render();">
+                            <input type="number" value="${s.cycles}" class="w-10 bg-white border border-gray-200 rounded py-1 text-center font-bold text-xs" onchange="state.editingProtocol.thermalSteps[${i}].cycles = parseInt(this.value); render();">
+                            <button onclick="state.editingProtocol.thermalSteps.splice(${i},1); render();" class="w-6 text-red-300">✕</button>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <button onclick="state.editingProtocol.thermalSteps.push({name: 'New Step', temp: 95, duration: '30s', cycles: 1}); render();" 
+                class="mt-3 w-full border-2 border-dashed border-gray-100 py-3 rounded-xl text-gray-400 text-[10px] font-bold uppercase tracking-widest">+ Add Thermal Step</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pt-2">
+                <button onclick="saveChanges()" class="bg-navy text-white py-4 rounded-xl font-black text-sm shadow-lg active:scale-95 transition">Save Protocol</button>
+                <button onclick="showPage('dashboard')" class="bg-white text-gray-400 border border-gray-200 py-4 rounded-xl font-bold text-sm">Cancel</button>
+            </div>
+        </div>
+    `;
+}
+        function renderImport() {
+    document.getElementById('main-content').innerHTML = `
+        <div class="max-w-xl mx-auto mt-6 px-4 pb-20">
+            <div class="glass-card rounded-3xl p-6 bg-white shadow-sm border border-gray-100">
+                <h2 class="text-2xl font-black text-navy mb-2 text-center">Smart AI Import </h2>
+                <p class="text-[10px] text-gray-400 text-center mb-6 uppercase tracking-widest font-bold">PDF or Manual Text</p>
+                
+                <div class="border-2 border-dashed border-blue-100 rounded-2xl p-8 text-center bg-blue-50/30 mb-6 hover:bg-blue-50 transition-all relative group">
+                    <input type="file" id="pdf-file" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileUpload(event)">
+                    
+                    <div class="flex flex-col items-center">
+                        <div class="bg-scientific w-12 h-12 rounded-full flex items-center justify-center mb-3 text-white shadow-md">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        </div>
+                        <span class="text-navy font-bold text-sm">Upload Protocol PDF</span>
+                        <span class="text-[9px] text-blue-400 mt-2 font-bold uppercase tracking-widest italic" id="file-status">Ready to extract</span>
+                    </div>
+                </div>
+
+                <div class="relative flex items-center mb-6">
+                    <div class="flex-grow border-t border-gray-100"></div>
+                    <span class="px-3 text-[10px] font-bold text-gray-300">OR PASTE</span>
+                    <div class="flex-grow border-t border-gray-100"></div>
+                </div>
+
+                <textarea id="import-text" class="w-full h-40 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm focus:ring-navy focus:border-navy mb-4 resize-none" placeholder="Paste protocol steps here..."></textarea>
+                
+                <button onclick="runSmartImport()" id="ai-btn" class="w-full bg-navy text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all flex justify-center items-center">
+                    ${state.isAILoading ? '<span class="animate-spin mr-2">⏳</span> Processing...' : 'Start AI Import ✨'}
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const statusLabel = document.getElementById('file-status');
+    statusLabel.innerText = "⏳ Reading PDF contents...";
+
+    // تهيئة مكتبة PDF.js اللي ضيفناها في الـ Head فوق
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    const reader = new FileReader();
+    reader.onload = async function() {
+        try {
+            const typedarray = new Uint8Array(this.result);
+            const pdf = await pdfjsLib.getDocument(typedarray).promise;
+            let fullText = "";
+
+            // اللف على صفحات الملف صفحة صفحة لسحب النص
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                fullText += content.items.map(item => item.str).join(" ") + "\n";
+            }
+
+            // وضع النص المستخرج داخل مربع النص
+            document.getElementById('import-text').value = fullText;
+            statusLabel.innerText = "✅ PDF Extracted! Click Start AI.";
+        } catch (err) {
+            statusLabel.innerText = "❌ Error: Could not read PDF";
+            console.error(err);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+        async function runSmartImport() {
+    const text = document.getElementById('import-text').value;
+    if (!text || text.length < 20) return alert("Please provide more protocol details.");
+    
+    state.isAILoading = true; // تشغيل علامة التحميل (Spinning icon)
+    render();
+
+    // "البرومبت" أو الأمر اللي بنبعته للـ AI عشان يفهم طبيعة شغلنا
+    const prompt = `Convert this laboratory protocol text into a JSON object. 
+    Strictly use this format: {
+        "title": "Protocol Name",
+        "description": "Short summary",
+        "numSamples": 1,
+        "sampleVolume": 2.0,
+        "reagents": [{"name": "reagent name", "perSample": 1.5}],
+        "thermalSteps": [{"name": "step name", "temp": 95, "duration": "30s", "cycles": 40}]
+    }
+    TEXT: ${text}`;
+
+    try {
+        const result = await callGemini(prompt, true); // بننادي الركيزة الأولى
+        state.isAILoading = false;
+
+        if (result) {
+            // إضافة البيانات الجديدة لقائمة البروتوكولات عندك
+            result.id = 'p' + Date.now();
+            result.updated = new Date().toISOString().split('T')[0];
+            state.protocols.push(result);
+            
+            saveToLocal(); // حفظ في ذاكرة المتصفح
+            editProtocol(result.id); // فتح البروتوكول فوراً للتعديل
+        } else {
+            render();
+        }
+    } catch (e) {
+        state.isAILoading = false;
+        render();
+        alert("AI could not format this protocol. Try a clearer text.");
+    }
+}
+        
+        function render() {
+            if (state.currentPage === 'dashboard') renderDashboard();
+            else if (state.currentPage === 'editor') renderEditor();
+            else if (state.currentPage === 'import') renderImport();
+        }
+
+        window.onload = () => { loadFromLocal(); render(); };
+    </script>
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
